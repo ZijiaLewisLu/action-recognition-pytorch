@@ -184,7 +184,7 @@ class VideoDataSet(data.Dataset):
         Returns:
             list: frame index, index starts from 1.
         """
-        max_frame_idx = max(1, record.num_frames - self.num_consecutive_frames + 1)
+        max_frame_idx = max(1, record.num_frames - self.num_consecutive_frames + 1) 
         if self.dense_sampling:
             frame_idx = np.asarray(random_clip(max_frame_idx, self.sample_freq, self.num_frames))
         else:
@@ -208,14 +208,15 @@ class VideoDataSet(data.Dataset):
         return frame_idx
 
     def _get_val_indices(self, record):
-        max_frame_idx = max(1, record.num_frames - self.num_consecutive_frames + 1)
+        max_frame_idx = max(1, record.num_frames - self.num_consecutive_frames + 1) # = num_frames for RGB
         if self.dense_sampling:
-            if self.fixed_offset:
-                sample_pos = max(1, 1 + max_frame_idx - self.sample_freq * self.num_frames)
-                t_stride = self.sample_freq
-                start_list = np.linspace(0, sample_pos - 1, num=self.num_clips, dtype=int)
+            if self.fixed_offset: # True
+                sample_pos = max(1, 1 + max_frame_idx - self.sample_freq * self.num_frames) # - 2 * 32 (num_frames = frames per group)
+                t_stride = self.sample_freq # 2
+                start_list = np.linspace(0, sample_pos - 1, num=self.num_clips, dtype=int) # num_clips should be 10
                 frame_idx = []
                 for start_idx in start_list.tolist():
+                    # add in the frame index of one clips
                     frame_idx += [(idx * t_stride + start_idx) % max_frame_idx for idx in range(self.num_frames)]
             else:
                 frame_idx = []
@@ -297,3 +298,4 @@ class VideoDataSet(data.Dataset):
 
     def __len__(self):
         return len(self.video_list)
+

@@ -197,6 +197,7 @@ class I3D_ResNet(nn.Module):
         x = x.squeeze(-1)
         x = x.squeeze(-1)
         x = x.transpose(1, 2)
+        feature = x # -------------------------------------- B, F, 2048
         n, c, nf = x.size()
         x = x.contiguous().view(n * c, -1)
         x = self.dropout(x)
@@ -205,7 +206,7 @@ class I3D_ResNet(nn.Module):
         # N x num_classes x ((F/8)-1)
         logits = torch.mean(x, 1)
 
-        return logits
+        return logits, feature
 
 
 def i3d_resnet(depth, num_classes, dropout, without_t_stride, **kwargs):
