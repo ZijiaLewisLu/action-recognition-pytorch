@@ -39,7 +39,7 @@ def eval_a_batch(data, model, num_clips=1, num_crops=1, threed_data=False):
 
     return result
 
-class VideoDataSet(torch.util.data.Dataset):
+class VideoDataSet(torch.utils.data.Dataset):
 
     def __init__(self, root_path, list_file, image_tmpl='{:05d}.jpg', transform=None, seperator=' '):
         """
@@ -70,7 +70,7 @@ class VideoDataSet(torch.util.data.Dataset):
             return img
 
         num_try = 0
-        image_path_file = os.path.join(self.root_path, directory, self.image_tmpl.format(idx))
+        image_path_file = self._image_path(directory, idx)
         img = None
         while num_try < 10:
             try:
@@ -90,9 +90,9 @@ class VideoDataSet(torch.util.data.Dataset):
         original_video_numbers = 0
         for x in open(self.list_file):
             elements = x.strip().split(self.seperator)
-            start_frame = int(elements[1])
-            end_frame = int(elements[2])
-            total_frame = end_frame - start_frame + 1
+            # start_frame = int(elements[1])
+            # end_frame = int(elements[2])
+            # total_frame = end_frame - start_frame + 1
             original_video_numbers += 1
             tmp.append(elements)
 
@@ -117,7 +117,7 @@ class VideoDataSet(torch.util.data.Dataset):
 
         # load in all images
         images = [] 
-        for i in range(record.num_frames-1): 
+        for i in range(record.start_frame, record.end_frame): 
             idx = i+1
             img = self._load_image(record.path, idx) # PIL image
             images.extend(img)
@@ -171,19 +171,14 @@ class BatchGenerator():
 def main():
     global args
     parser = arg_parser()
+    parser.add_argument('--feature_savedir', default=None, type=str, required=True)
+    parser.add_argument('--video_list', default=None, type=str, required=True)
     args = parser.parse_args()
     cudnn.benchmark = True
 
-    # num_classes, train_list_name, val_list_name, test_list_name, filename_seperator, image_tmpl, filter_video, label_file = get_dataset_config(args.dataset)
-    num_classes = 400
-    filename_seperator = ','
-    image_tmpl = '{:05d}.jpg'
+    args.num_classes = num_classes = 400
 
 
-    data_list_name = './MPII Cooking 2.txt'
-    target_dir = './MC2_feature'
-
-    args.num_classes = num_classes
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
@@ -195,10 +190,25 @@ def main():
     elif args.modality == 'flow':
         args.input_channels = 2 * 5
 
+    #############################
+    # create model
     model, arch_name = build_model(args, test_mode=True)
+
+    model = model.cuda()
+    model.eval()
+
+    if args.pretrained is not None:
+        print("=> using pre-trained model '{}'".format(arch_name))
+        checkpoint = torch.load(args.pretrained, map_location='cpu')
+        model.load_state_dict(checkpoint['state_dict'])
+    else:
+        print("=> creating model '{}'".format(arch_name))
+
+
+    ###########################
+    # load dataset
     mean = model.mean(args.modality)
     std = model.std(args.modality)
-
     # overwrite mean and std if they are presented in command
     if args.mean is not None:
         if args.modality == 'rgb':
@@ -218,15 +228,6 @@ def main():
                 raise ValueError("When training with flow, dim of std must be three.")
         std = args.std
 
-    model = model.cuda()
-    model.eval()
-
-    if args.pretrained is not None:
-        print("=> using pre-trained model '{}'".format(arch_name))
-        checkpoint = torch.load(args.pretrained, map_location='cpu')
-        model.load_state_dict(checkpoint['state_dict'])
-    else:
-        print("=> creating model '{}'".format(arch_name))
 
     # augmentor
     if args.disable_scaleup:
@@ -245,27 +246,31 @@ def main():
     augmentor = transforms.Compose(augments)
 
     # Data loading code
-    val_dataset = VideoDataSet(args.datadir, data_list_name, 
+    filename_seperator = ','
+    image_tmpl = '{:03d}.jpg'
+    # data_list_name = '/mnt/raptor/zijia/PTG/dataset/Breakfast/video_list_for_r3d_feature_extraction.txt'
+    # target_dir = './MC2_feature'
+    val_dataset = VideoDataSet(args.datadir, args.video_list, 
                                  image_tmpl=image_tmpl, 
                                  transform=augmentor, 
                                  seperator=filename_seperator, )
 
 
-    V = len(val_dataset.video_list) # 273
+    ###################
+    # start extracting feature
+    V = len(val_dataset.video_list) 
     IDX = list(range(V))
     with torch.no_grad(), tqdm(total=len(IDX)) as t_bar:
         for i in IDX:
-            print(i)
-            # video: F, C, H, W
             vname = val_dataset.video_list[i].video_id
 
-            save = os.path.join(target_dir, vname + '.npz')
+            save = os.path.join(args.feature_savedir, vname + '.npy')
             if os.path.exists(save):
                 t_bar.update(1)
                 continue
 
-            video = val_dataset[i]
-            
+            video = val_dataset[i] # T, C, H, W
+
             # pad the beginning and end of the video
             slide_window = args.frames_per_group * args.groups
             half_window = np.ceil( (slide_window - 1) / 2 )
@@ -282,7 +287,7 @@ def main():
                 all_logits = []
                 all_features = []
                 for batch in batch_iter:
-                    batch = batch.cuda()
+                    batch = batch.cuda() #.contiguous()
                     logits, features = model(batch)
                     # all_logits.append(logits.cpu())
                     features = features.mean(1) # B, window_size, 2048 -> B, 2048
@@ -291,7 +296,7 @@ def main():
                 all_features = torch.cat(all_features, dim=0) # T, 2048
                 all_features = all_features.numpy()
 
-            all_features = np.savez_compressed(save, all_features)
+            all_features = np.save(save, all_features)
 
             t_bar.update(1)
 

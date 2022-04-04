@@ -32,14 +32,15 @@ To custom, rewrite `VideoDataSet` to load the video of your interest. Video fram
 
 Example command to run the code.
 ```bash
-python3 mc2_extract.py --groups 32 -e --frames_per_group 2 --without_t_stride --logdir logs/ 
-    --dataset 'kinetics400' \
+python3 example_extract.py --groups 32 -e --frames_per_group 2 --without_t_stride --logdir logs/  \
     --backbone_net 'i3d_resnet' \
-    --num_crops 1 --input_size 256 --disable_scaleup -b 1 --dense_sampling \
-    --gpu 4 \
-    --datadir '../../Dataset/MPII_Cooking_2/frames' \
-    --pretrained './kinetics400-rgb-i3d-resnet-50-f32-s2-precise_bn-warmupcosine-bs1024-e196.pth.tar' -d 50
-    #--pretrained './kinetics400-rgb-i3d-resnet-101-f32-s2-precise_bn-warmupcosine-bs1008-e196.pth.tar' -d 101
+    --num_crops 1 --input_size 256 --disable_scaleup -b 32 --dense_sampling \
+    --gpu 7 \
+    --datadir '.../frames' \
+    --feature_savedir '.../r3d_kinetic_f32_s2' \
+    --video_list '.../video_list_for_r3d_feature_extraction.txt' \
+    --pretrained './kinetics400-rgb-i3d-resnet-101-f32-s2-precise_bn-warmupcosine-bs1008-e196.pth.tar' -d 101
+    # --pretrained './kinetics400-rgb-i3d-resnet-50-f32-s2-precise_bn-warmupcosine-bs1024-e196.pth.tar' -d 50
 ```
 
 ## Data Preparation
