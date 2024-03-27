@@ -11,125 +11,60 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 import numpy as np
 
+import ffmpeg
+from PIL import Image
+
 from models import build_model
-# from utils.utils import build_dataflow, AverageMeter, accuracy
 from utils.video_transforms import *
-from utils.video_dataset import VideoRecord
 from opts import arg_parser
 
 
-def eval_a_batch(data, model, num_clips=1, num_crops=1, threed_data=False):
-    with torch.no_grad():
-        batch_size = data.shape[0]
-        if threed_data:
-            tmp = torch.chunk(data, num_clips * num_crops, dim=2)
-            data = torch.cat(tmp, dim=0)
-        else:
-            data = data.view((batch_size * num_crops * num_clips, -1) + data.size()[2:])
-        result = model(data)
+# class VideoDataSet(torch.utils.data.Dataset):
 
-        if threed_data:
-            tmp = torch.chunk(result, num_clips * num_crops, dim=0)
-            result = None
-            for i in range(len(tmp)):
-                result = result + tmp[i] if result is not None else tmp[i]
-            result /= (num_clips * num_crops)
-        else:
-            result = result.reshape(batch_size, num_crops * num_clips, -1).mean(dim=1)
+#     def __init__(self, root_path, list_file, image_tmpl='{:05d}.jpg', transform=None, seperator=' '):
+#         """
+#         Args:
+#             root_path (str): the file path to the root of video folder
+#             list_file (str): the file list, each line with folder_path, start_frame, end_frame, label_id
+#             image_tmpl (str): template of image ids
+#             transform: the transformer for preprocessing
+#         """
 
-    return result
+#         self.root_path = root_path
+#         self.list_file = list_file
+#         self.image_tmpl = image_tmpl
+#         self.transform = transform
+#         self.seperator = seperator
 
-class VideoDataSet(torch.utils.data.Dataset):
+#         self.video_list = self._parse_list()
 
-    def __init__(self, root_path, list_file, image_tmpl='{:05d}.jpg', transform=None, seperator=' '):
-        """
-        Args:
-            root_path (str): the file path to the root of video folder
-            list_file (str): the file list, each line with folder_path, start_frame, end_frame, label_id
-            image_tmpl (str): template of image ids
-            transform: the transformer for preprocessing
-        """
+    # def _image_path(self, directory, idx):
+    #     return os.path.join(self.root_path, directory, self.image_tmpl.format(idx))
 
-        self.root_path = root_path
-        self.list_file = list_file
-        self.image_tmpl = image_tmpl
-        self.transform = transform
-        self.seperator = seperator
+    # def _load_image(self, directory, idx):
 
-        self.video_list = self._parse_list()
+    #     def _safe_load_image(img_path):
+    #         img_tmp = Image.open(img_path)
+    #         img = img_tmp.copy()
+    #         img_tmp.close()
+    #         return img
 
-    def _image_path(self, directory, idx):
-        return os.path.join(self.root_path, directory, self.image_tmpl.format(idx))
+    #     num_try = 0
+    #     image_path_file = self._image_path(directory, idx)
+    #     img = None
+    #     while num_try < 10:
+    #         try:
+    #             img = [_safe_load_image(image_path_file)]
+    #             break
+    #         except Exception as e:
+    #             print('[Will try load again] error loading image: {}, error: {}'.format(image_path_file, str(e)))
+    #             num_try += 1
 
-    def _load_image(self, directory, idx):
+    #     if img is None:
+    #         raise ValueError('[Fail 10 times] error loading image: {}'.format(image_path_file))
 
-        def _safe_load_image(img_path):
-            img_tmp = Image.open(img_path)
-            img = img_tmp.copy()
-            img_tmp.close()
-            return img
+    #     return img
 
-        num_try = 0
-        image_path_file = self._image_path(directory, idx)
-        img = None
-        while num_try < 10:
-            try:
-                img = [_safe_load_image(image_path_file)]
-                break
-            except Exception as e:
-                print('[Will try load again] error loading image: {}, error: {}'.format(image_path_file, str(e)))
-                num_try += 1
-
-        if img is None:
-            raise ValueError('[Fail 10 times] error loading image: {}'.format(image_path_file))
-
-        return img
-
-    def _parse_list(self):
-        tmp = []
-        original_video_numbers = 0
-        for x in open(self.list_file):
-            elements = x.strip().split(self.seperator)
-            # start_frame = int(elements[1])
-            # end_frame = int(elements[2])
-            # total_frame = end_frame - start_frame + 1
-            original_video_numbers += 1
-            tmp.append(elements)
-
-        num = len(tmp)
-        print("The number of videos is {}".format(num), flush=True)
-        assert (num > 0)
-        file_list = []
-        for item in tmp:
-            file_list.append([item[0], int(item[1]), int(item[2]), -1])
-
-        # VideoRecord( path, startframe, endframe, label )
-        video_list = [VideoRecord(item[0], item[1], item[2], item[3]) for item in file_list]
-
-        return video_list
-
-    def __getitem__(self, index):
-        """
-        Returns:
-            torch.FloatTensor: TxCxHxW dimension 
-        """
-        record = self.video_list[index]
-
-        # load in all images
-        images = [] 
-        for i in range(record.start_frame, record.end_frame): 
-            idx = i+1
-            img = self._load_image(record.path, idx) # PIL image
-            images.extend(img)
-
-        images = self.transform(images) # torch tensor
-        TC, H, W = images.shape
-        images = images.view(-1, 3, H, W) # T, C, H, W
-
-        return images
-
-    def __len__(self):
-        return len(self.video_list)
 
 class BatchGenerator():
 
@@ -168,11 +103,43 @@ class BatchGenerator():
         self.batch_index = 0
         return self
 
+def read_video(video_path, transform, fps=10):
+    """
+    Returns:
+        torch.FloatTensor: TxCxHxW dimension 
+    """
+
+    probe = ffmpeg.probe(video_path)
+    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+    width = int(video_stream['width'])
+    height = int(video_stream['height'])
+
+
+    cmd = (
+        ffmpeg
+        .input(video_path)
+        .filter('fps', fps=fps)
+    )
+    out, _ = (
+        cmd.output('pipe:', format='rawvideo', pix_fmt='rgb24')
+        .run(capture_stdout=False, quiet=True)
+    )
+
+    video = np.frombuffer(out, np.uint8).reshape([-1, height, width, 3])
+    images = [ Image.fromarray(i) for i in video ]
+
+    images = transform(images) # torch tensor
+    TC, H, W = images.shape
+    images = images.view(-1, 3, H, W) # T, C, H, W
+
+    return images
+
 def main():
     global args
     parser = arg_parser()
     parser.add_argument('--feature_savedir', default=None, type=str, required=True)
     parser.add_argument('--video_list', default=None, type=str, required=True)
+    parser.add_argument('--split', nargs=2, default=None, type=int, required=False)
     args = parser.parse_args()
     cudnn.benchmark = True
 
@@ -246,30 +213,41 @@ def main():
     augmentor = transforms.Compose(augments)
 
     # Data loading code
-    filename_seperator = ','
-    image_tmpl = '{:03d}.jpg'
-    # data_list_name = '/mnt/raptor/zijia/PTG/dataset/Breakfast/video_list_for_r3d_feature_extraction.txt'
-    # target_dir = './MC2_feature'
-    val_dataset = VideoDataSet(args.datadir, args.video_list, 
-                                 image_tmpl=image_tmpl, 
-                                 transform=augmentor, 
-                                 seperator=filename_seperator, )
+    # image_tmpl = '{:03d}.jpg'
+    # val_dataset = VideoDataSet(args.datadir, args.video_list, 
+    #                              image_tmpl=image_tmpl, 
+    #                              transform=augmentor, 
+    #                              seperator=filename_seperator, )
+    filename_seperator = '\n'
+    with open(args.video_list) as fp:
+        video_list = fp.read().strip(filename_seperator).split(filename_seperator)
+    print("The number of videos is {}".format(len(video_list)), flush=True)
 
 
     ###################
     # start extracting feature
-    V = len(val_dataset.video_list) 
+    V = len(video_list)
     IDX = list(range(V))
+    if args.split is not None:
+        print(args.split)
+        N = int(args.split[1])
+        N = (V + N - 1) // N
+        n = int(args.split[0])
+        IDX = IDX[n*N:(n+1)*N]
+    print(IDX[0], IDX[-1])
+
     with torch.no_grad(), tqdm(total=len(IDX)) as t_bar:
         for i in IDX:
-            vname = val_dataset.video_list[i].video_id
 
+            video_path = video_list[i]
+            vname = os.path.basename(video_path).split('.')[0]
             save = os.path.join(args.feature_savedir, vname + '.npy')
             if os.path.exists(save):
                 t_bar.update(1)
                 continue
 
-            video = val_dataset[i] # T, C, H, W
+            # read in video
+            video = read_video(video_path, augmentor)
 
             # pad the beginning and end of the video
             slide_window = args.frames_per_group * args.groups

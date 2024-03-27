@@ -1,3 +1,24 @@
+# Feature Extraction Code
+
+Refer to `extract_from_frame.py` for an example of extract framewise feature from I3D_resnet model.
+
+To custom, rewrite `VideoDataSet` to load the video of your interest. Video frames should be loaded as list of `PIL Images`.
+
+Example command to run the code.
+```bash
+python3 extract_from_frame.py --groups 32 -e --frames_per_group 2 --without_t_stride --logdir logs/  \
+    --num_crops 1 --input_size 256 --disable_scaleup -b 32 --dense_sampling \
+    --dataset "kinetics400" --backbone_net 'i3d_resnet' --gpu 7 \
+    --datadir './frames' --video_list './video_list.txt' \
+    --feature_savedir './r3d_kinetic_f32_s2' \
+    --pretrained './kinetics400-rgb-i3d-resnet-101-f32-s2-precise_bn-warmupcosine-bs1008-e196.pth.tar' -d 101 \
+    # --pretrained './kinetics400-rgb-i3d-resnet-50-f32-s2-precise_bn-warmupcosine-bs1024-e196.pth.tar' -d 50
+```
+
+------------------------------------------------------
+------------------------------------------------------
+
+
 # Action Recognition Study
 
 This repository contains a general implementation of 6 representative 2D and 3D approaches for action recognition including I3D [1], ResNet3D [2], S3D [3], R(2+1)D [4], TSN [5] and TAM [6].
@@ -24,24 +45,6 @@ If you use the codes and models from this repo, please cite our work. Thanks!
 pip install -r requirement.txt
 ```
 
-## *Special-Feature Extraction*
-
-Refer to `example_extract.py` for an example of extract framewise feature from I3D_resnet model.
-
-To custom, rewrite `VideoDataSet` to load the video of your interest. Video frames should be loaded as list of `PIL Images`.
-
-Example command to run the code.
-```bash
-python3 example_extract.py --groups 32 -e --frames_per_group 2 --without_t_stride --logdir logs/  \
-    --backbone_net 'i3d_resnet' \
-    --num_crops 1 --input_size 256 --disable_scaleup -b 32 --dense_sampling \
-    --gpu 7 \
-    --datadir '.../frames' \
-    --feature_savedir '.../r3d_kinetic_f32_s2' \
-    --video_list '.../video_list_for_r3d_feature_extraction.txt' \
-    --pretrained './kinetics400-rgb-i3d-resnet-101-f32-s2-precise_bn-warmupcosine-bs1008-e196.pth.tar' -d 101
-    # --pretrained './kinetics400-rgb-i3d-resnet-50-f32-s2-precise_bn-warmupcosine-bs1024-e196.pth.tar' -d 50
-```
 
 ## Data Preparation
 The dataloader (utils/video_dataset.py) can load videos (image sequences) stored in the following format:
