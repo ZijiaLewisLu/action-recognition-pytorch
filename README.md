@@ -16,7 +16,6 @@ python3 extract_from_frame.py --groups 32 -e --frames_per_group 2 --without_t_st
 ```
 
 ------------------------------------------------------
-------------------------------------------------------
 
 
 # Action Recognition Study
