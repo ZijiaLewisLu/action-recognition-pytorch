@@ -1,7 +1,6 @@
 import os
-import time
-
-import torch.nn as nn
+# import time
+# import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
@@ -17,54 +16,6 @@ from PIL import Image
 from models import build_model
 from utils.video_transforms import *
 from opts import arg_parser
-
-
-# class VideoDataSet(torch.utils.data.Dataset):
-
-#     def __init__(self, root_path, list_file, image_tmpl='{:05d}.jpg', transform=None, seperator=' '):
-#         """
-#         Args:
-#             root_path (str): the file path to the root of video folder
-#             list_file (str): the file list, each line with folder_path, start_frame, end_frame, label_id
-#             image_tmpl (str): template of image ids
-#             transform: the transformer for preprocessing
-#         """
-
-#         self.root_path = root_path
-#         self.list_file = list_file
-#         self.image_tmpl = image_tmpl
-#         self.transform = transform
-#         self.seperator = seperator
-
-#         self.video_list = self._parse_list()
-
-    # def _image_path(self, directory, idx):
-    #     return os.path.join(self.root_path, directory, self.image_tmpl.format(idx))
-
-    # def _load_image(self, directory, idx):
-
-    #     def _safe_load_image(img_path):
-    #         img_tmp = Image.open(img_path)
-    #         img = img_tmp.copy()
-    #         img_tmp.close()
-    #         return img
-
-    #     num_try = 0
-    #     image_path_file = self._image_path(directory, idx)
-    #     img = None
-    #     while num_try < 10:
-    #         try:
-    #             img = [_safe_load_image(image_path_file)]
-    #             break
-    #         except Exception as e:
-    #             print('[Will try load again] error loading image: {}, error: {}'.format(image_path_file, str(e)))
-    #             num_try += 1
-
-    #     if img is None:
-    #         raise ValueError('[Fail 10 times] error loading image: {}'.format(image_path_file))
-
-    #     return img
-
 
 class BatchGenerator():
 
@@ -173,7 +124,7 @@ def main():
 
 
     ###########################
-    # load dataset
+    # prepare data preprocessing
     mean = model.mean(args.modality)
     std = model.std(args.modality)
     # overwrite mean and std if they are presented in command
@@ -195,7 +146,6 @@ def main():
                 raise ValueError("When training with flow, dim of std must be three.")
         std = args.std
 
-
     # augmentor
     if args.disable_scaleup:
         scale_size = args.input_size
@@ -212,12 +162,7 @@ def main():
 
     augmentor = transforms.Compose(augments)
 
-    # Data loading code
-    # image_tmpl = '{:03d}.jpg'
-    # val_dataset = VideoDataSet(args.datadir, args.video_list, 
-    #                              image_tmpl=image_tmpl, 
-    #                              transform=augmentor, 
-    #                              seperator=filename_seperator, )
+    # read video list
     filename_seperator = '\n'
     with open(args.video_list) as fp:
         video_list = fp.read().strip(filename_seperator).split(filename_seperator)
@@ -260,7 +205,6 @@ def main():
 
             # batch
             batch_iter = BatchGenerator(args.batch_size, video, args.groups, args.frames_per_group)
-            
             with torch.no_grad():
                 all_logits = []
                 all_features = []
